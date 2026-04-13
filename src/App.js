@@ -3,275 +3,256 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import styled, { createGlobalStyle, keyframes } from 'styled-components';
 
-// --- 1. GLOBAL STYLES (Modern SaaS Look) ---
+// --- 1. GLOBAL STYLES ---
 const GlobalStyle = createGlobalStyle`
   body {
     margin: 0; padding: 0;
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-family: 'Inter', -apple-system, sans-serif;
     background-color: #f8fafc;
-    color: #1e293b;
+    color: #0f172a;
+    -webkit-font-smoothing: antialiased;
   }
-  * { box-sizing: border-box; transition: all 0.2s ease-in-out; }
+  * { box-sizing: border-box; transition: all 0.2s ease; }
 `;
 
-const fadeIn = keyframes`
-  from { opacity: 0; transform: translateY(10px); }
+const slideUp = keyframes`
+  from { opacity: 0; transform: translateY(20px); }
   to { opacity: 1; transform: translateY(0); }
 `;
 
-// --- 2. ZUSTAND STORE ---
+// --- 2. ZUSTAND STORE (State Persistence) ---
 const useStore = create(
   persist(
     (set) => ({
+      standard: 'Global', // Global vs Strict (Regulatory Toggles)
       history: [],
-      language: 'en',
-      setLanguage: (lang) => set({ language: lang }),
+      vendorNotes: {},
+      setStandard: (s) => set({ standard: s }),
       addHistory: (item) => set((state) => ({
-        history: [{ ...item, id: Date.now() }, ...state.history].slice(0, 10)
+        history: [{ ...item, id: Date.now() }, ...state.history].slice(0, 6)
+      })),
+      saveNote: (id, note) => set((state) => ({
+        vendorNotes: { ...state.vendorNotes, [id]: note }
       })),
     }),
-    { name: 'halal-dashboard-v3' }
+    { name: 'staff-verifier-v5' }
   )
 );
 
-// --- 3. MOCK DATA ---
+// --- 3. PRODUCT ENGINE (Risk-Encoded Data) ---
 const PRODUCTS = {
-  "123": {
-    name: "Golden Honey Gummies",
-    brand: "NatureSweet",
-    img: "🍬",
+  "101": {
+    name: "Classic Fruit Chews",
+    brand: "SweetStep",
+    category: "Snacks",
+    img: "🍏",
     ingredients: [
-      { name: "Organic Honey", status: "halal", desc: "Natural sweetener." },
-      { name: "Pork Gelatin", status: "haram", desc: "Thickening agent derived from swine.", source: "Standard Fatwa #12" },
-      { name: "Pectin", status: "halal", desc: "Fruit-based gelling agent." }
+      { name: "Pectin", status: "halal", risk: "Low" },
+      { name: "Artificial Flavor", status: "halal", risk: "Medium" },
+      { name: "E120 Carmine", status: "haram", risk: "High", source: "Insects" }
     ]
   },
-  "456": {
-    name: "Mountain Spring Water",
-    brand: "PureLife",
-    img: "💧",
+  "202": {
+    name: "Organic Berry Bites",
+    brand: "PurePath",
+    category: "Snacks",
+    img: "🍓",
     ingredients: [
-      { name: "Spring Water", status: "halal", desc: "Natural source." }
+      { name: "Berry Juice", status: "halal", risk: "Low" },
+      { name: "Agar Agar", status: "halal", risk: "Low" }
+    ]
+  },
+  "303": {
+    name: "Whey Protein Bar",
+    brand: "TitanForce",
+    category: "Supplements",
+    img: "💪",
+    ingredients: [
+      { name: "Whey Isolate", status: "halal", risk: "Medium" },
+      { name: "L-Cysteine", status: "mushbooh", risk: "High", source: "Unclear derivation" }
     ]
   }
 };
 
-// --- 4. STYLED COMPONENTS (The "Non-Terminal" UI) ---
-const DashboardLayout = styled.div`
-  display: grid;
-  grid-template-columns: 280px 1fr;
-  min-height: 100vh;
+// --- 4. STYLED COMPONENTS (SaaS Dashboard UI) ---
+const Layout = styled.div` display: grid; grid-template-columns: 280px 1fr; min-height: 100vh; `;
+
+const Sidebar = styled.nav`
+  background: white; border-right: 1px solid #e2e8f0; padding: 2rem;
+  display: flex; flex-direction: column; gap: 2rem;
 `;
 
-const Sidebar = styled.div`
-  background: white;
-  border-right: 1px solid #e2e8f0;
-  padding: 2rem;
-  display: flex;
-  flex-direction: column;
-  gap: 2rem;
+const Main = styled.main` padding: 3rem; max-width: 1100px; margin: 0 auto; width: 100%; `;
+
+const SearchInput = styled.input`
+  width: 100%; padding: 1.2rem; border-radius: 12px; border: 2px solid #e2e8f0;
+  font-size: 1.1rem; margin-bottom: 2rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+  &:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1); }
 `;
 
-const MainContent = styled.div`
-  padding: 3rem;
-  max-width: 1000px;
-  margin: 0 auto;
-  width: 100%;
+const ProductCard = styled.div`
+  background: white; border-radius: 24px; padding: 2.5rem;
+  box-shadow: 0 20px 25px -5px rgba(0,0,0,0.05); animation: ${slideUp} 0.5s ease-out;
 `;
 
-const SearchBar = styled.input`
-  width: 100%;
-  padding: 1rem 1.5rem;
-  border-radius: 12px;
-  border: 1px solid #e2e8f0;
-  background: white;
-  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
-  font-size: 1rem;
-  margin-bottom: 2rem;
-  &:focus { outline: 2px solid #3b82f6; border-color: transparent; }
+const RiskHeatmap = styled.div`
+  height: 8px; width: 100%; background: #f1f5f9; border-radius: 4px;
+  display: flex; overflow: hidden; margin: 1.5rem 0;
 `;
 
-const ProductHero = styled.div`
-  background: white;
-  border-radius: 24px;
-  padding: 2rem;
-  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1);
-  animation: ${fadeIn} 0.4s ease-out;
+const HeatSegment = styled.div`
+  height: 100%; width: ${props => props.width}%; background: ${props => props.color};
 `;
 
-const StatusBanner = styled.div`
-  padding: 1rem 2rem;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  font-weight: 700;
-  margin-bottom: 2rem;
-  background: ${props => props.type === 'haram' ? '#fef2f2' : '#f0fdf4'};
-  color: ${props => props.type === 'haram' ? '#991b1b' : '#166534'};
-  border: 1px solid ${props => props.type === 'haram' ? '#fee2e2' : '#dcfce7'};
+const StatusChip = styled.div`
+  padding: 0.8rem 1.5rem; border-radius: 10px; font-weight: 800; display: inline-flex; align-items: center; gap: 10px;
+  background: ${props => props.type === 'haram' ? '#fef2f2' : props.type === 'mushbooh' ? '#fffbeb' : '#f0fdf4'};
+  color: ${props => props.type === 'haram' ? '#991b1b' : props.type === '92400e' ? '#92400e' : '#166534'};
+  margin-bottom: 1.5rem;
 `;
 
-const TabContainer = styled.div`
-  display: flex;
-  gap: 1.5rem;
-  border-bottom: 2px solid #f1f5f9;
-  margin-bottom: 2rem;
+const SuggestionGrid = styled.div`
+  display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 2rem;
 `;
 
-const Tab = styled.button`
-  padding: 0.75rem 0;
-  background: none;
-  border: none;
-  border-bottom: 2px solid ${props => props.active ? '#3b82f6' : 'transparent'};
-  color: ${props => props.active ? '#3b82f6' : '#64748b'};
-  font-weight: 600;
-  cursor: pointer;
-  &:hover { color: #3b82f6; }
+const NoteBox = styled.textarea`
+  width: 100%; height: 100px; padding: 1rem; border-radius: 12px; border: 1px solid #e2e8f0;
+  background: #fffcf0; font-family: inherit; margin-top: 1rem; resize: none;
 `;
 
-const IngredientGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 1rem;
-`;
-
-const IngredientCard = styled.div`
-  padding: 1rem;
-  border-radius: 12px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  position: relative;
-  &:hover { border-color: #cbd5e1; transform: translateY(-2px); }
-`;
-
-const StatusDot = styled.span`
-  height: 10px;
-  width: 10px;
-  background-color: ${props => props.status === 'halal' ? '#22c55e' : '#ef4444'};
-  border-radius: 50%;
-  display: inline-block;
-  margin-right: 8px;
-`;
-
-// --- 5. MAIN APP ---
+// --- 5. MAIN APPLICATION ---
 export default function App() {
   const [query, setQuery] = useState('');
-  const [activeTab, setActiveTab] = useState('overview');
-  const [selectedProduct, setSelectedProduct] = useState(null);
-  const { history, addHistory, language, setLanguage } = useStore();
+  const [activeProduct, setActiveProduct] = useState(null);
+  const store = useStore();
 
   const handleSearch = (e) => {
     const val = e.target.value;
     setQuery(val);
     if (PRODUCTS[val]) {
       const p = PRODUCTS[val];
-      setSelectedProduct(p);
-      const isHaram = p.ingredients.some(i => i.status === 'haram');
-      addHistory({ name: p.name, status: isHaram ? 'haram' : 'halal' });
+      setActiveProduct({ ...p, id: val });
+      const status = p.ingredients.some(i => i.status === 'haram') ? 'haram' : 'halal';
+      store.addHistory({ name: p.name, status });
     }
   };
 
-  const isHaram = selectedProduct?.ingredients.some(i => i.status === 'haram');
+  // STAFF LOGIC: Calculate dynamic verdict based on Regulatory Standard
+  const verdict = useMemo(() => {
+    if (!activeProduct) return null;
+    const hasHaram = activeProduct.ingredients.some(i => i.status === 'haram');
+    const hasHighRisk = activeProduct.ingredients.some(i => i.risk === 'High');
+    
+    if (hasHaram) return 'haram';
+    if (store.standard === 'Strict' && hasHighRisk) return 'mushbooh';
+    return 'halal';
+  }, [activeProduct, store.standard]);
+
+  // STAFF LOGIC: Smart Alternative Finder
+  const alternatives = useMemo(() => {
+    if (!activeProduct || verdict === 'halal') return [];
+    return Object.entries(PRODUCTS).filter(([id, p]) => 
+      p.category === activeProduct.category && 
+      id !== activeProduct.id && 
+      !p.ingredients.some(i => i.status === 'haram' || i.risk === 'High')
+    ).slice(0, 2);
+  }, [activeProduct, verdict]);
 
   return (
     <>
       <GlobalStyle />
-      <DashboardLayout>
+      <Layout>
         <Sidebar>
-          <h2 style={{ color: '#3b82f6', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span>🛡️</span> Verifier
-          </h2>
+          <h2 style={{ color: '#3b82f6', letterSpacing: '-1px' }}>CompliancePro</h2>
           
           <div>
-            <small style={{ color: '#94a3b8', textTransform: 'uppercase', fontWeight: 800 }}>Recent Scans</small>
-            <div style={{ marginTop: '1rem' }}>
-              {history.map(item => (
-                <div key={item.id} style={{ padding: '0.5rem 0', display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
-                  <span>{item.name}</span>
-                  <StatusDot status={item.status} />
-                </div>
-              ))}
+            <small style={{ fontWeight: 800, color: '#94a3b8' }}>REGULATORY STANDARD</small>
+            <div style={{ marginTop: '0.8rem', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <button onClick={() => store.setStandard('Global')} style={{ padding: '10px', borderRadius: '8px', border: '1px solid #e2e8f0', background: store.standard === 'Global' ? '#3b82f6' : 'white', color: store.standard === 'Global' ? 'white' : '#64748b', cursor: 'pointer' }}>Global (Standard)</button>
+              <button onClick={() => store.setStandard('Strict')} style={{ padding: '10px', borderRadius: '8px', border: '1px solid #e2e8f0', background: store.standard === 'Strict' ? '#3b82f6' : 'white', color: store.standard === 'Strict' ? 'white' : '#64748b', cursor: 'pointer' }}>Strict (Precautionary)</button>
             </div>
           </div>
 
           <div style={{ marginTop: 'auto' }}>
-            <select value={language} onChange={(e) => setLanguage(e.target.value)} style={{ width: '100%', padding: '0.5rem' }}>
-              <option value="en">English</option>
-              <option value="ar">العربية</option>
-            </select>
+            <small style={{ color: '#94a3b8' }}>Session Active: {store.history.length} scans</small>
           </div>
         </Sidebar>
 
-        <MainContent>
-          <SearchBar 
-            placeholder="Scan barcode or type '123'..." 
-            value={query}
-            onChange={handleSearch}
-          />
+        <Main>
+          <SearchInput placeholder="Scan Barcode (101, 202, or 303)..." value={query} onChange={handleSearch} />
 
-          {!selectedProduct ? (
-            <div style={{ textAlign: 'center', marginTop: '10rem', color: '#94a3b8' }}>
-              <h1 style={{ fontSize: '4rem' }}>🛒</h1>
-              <p>Ready to verify. Scan a product to begin.</p>
-            </div>
-          ) : (
-            <ProductHero>
-              <div style={{ display: 'flex', gap: '2rem', marginBottom: '2rem' }}>
-                <div style={{ fontSize: '4rem', background: '#f1f5f9', padding: '1rem', borderRadius: '20px' }}>
-                  {selectedProduct.img}
-                </div>
+          {activeProduct ? (
+            <ProductCard>
+              <StatusChip type={verdict}>
+                {verdict === 'haram' ? '❌ HARAM FLAG' : verdict === 'mushbooh' ? '⚠️ MUSHBOOH / HIGH RISK' : '✅ HALAL CERTIFIED'}
+              </StatusChip>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
-                  <h1 style={{ margin: 0 }}>{selectedProduct.name}</h1>
-                  <p style={{ color: '#64748b', margin: '0.5rem 0' }}>{selectedProduct.brand}</p>
+                  <h1 style={{ fontSize: '2.5rem', margin: 0 }}>{activeProduct.img} {activeProduct.name}</h1>
+                  <p style={{ color: '#64748b', fontSize: '1.1rem' }}>{activeProduct.brand} • {activeProduct.category}</p>
                 </div>
               </div>
 
-              <StatusBanner type={isHaram ? 'haram' : 'halal'}>
-                {isHaram ? '⚠️ HARAM PRODUCT DETECTED' : '✅ 100% HALAL COMPLIANT'}
-              </StatusBanner>
-
-              <TabContainer>
-                <Tab active={activeTab === 'overview'} onClick={() => setActiveTab('overview')}>Overview</Tab>
-                <Tab active={activeTab === 'ingredients'} onClick={() => setActiveTab('ingredients')}>Ingredients ({selectedProduct.ingredients.length})</Tab>
-                <Tab active={activeTab === 'sources'} onClick={() => setActiveTab('sources')}>Certifications</Tab>
-              </TabContainer>
-
-              {activeTab === 'overview' && (
-                <div style={{ lineHeight: 1.6 }}>
-                  <p>This product was analyzed across 3 global databases. It contains {selectedProduct.ingredients.length} total elements.</p>
-                  {isHaram && <p style={{ color: '#ef4444', fontWeight: 'bold' }}>Reason for flag: Contains pork-derived gelatin which is strictly prohibited.</p>}
-                </div>
-              )}
-
-              {activeTab === 'ingredients' && (
-                <IngredientGrid>
-                  {selectedProduct.ingredients.map((ing, idx) => (
-                    <IngredientCard key={idx}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                        <StatusDot status={ing.status} />
-                        <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{ing.status.toUpperCase()}</span>
-                      </div>
-                      <strong>{ing.name}</strong>
-                      <p style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '0.5rem' }}>{ing.desc}</p>
-                    </IngredientCard>
+              <div style={{ marginTop: '2rem' }}>
+                <small style={{ fontWeight: 800, color: '#64748b' }}>INGREDIENT RISK ANALYSIS</small>
+                <RiskHeatmap>
+                  {activeProduct.ingredients.map((ing, i) => (
+                    <HeatSegment 
+                      key={i} 
+                      width={100 / activeProduct.ingredients.length} 
+                      color={ing.status === 'haram' ? '#ef4444' : ing.risk === 'High' ? '#f59e0b' : '#22c55e'}
+                    />
                   ))}
-                </IngredientGrid>
-              )}
+                </RiskHeatmap>
+              </div>
 
-              {activeTab === 'sources' && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginTop: '1rem' }}>
                 <div>
-                  <p>Verified against:</p>
-                  <ul>
-                    <li>GIMDES Halal Certification</li>
-                    <li>HMC (Halal Monitoring Committee)</li>
-                  </ul>
+                  <h4>Technical Breakdown</h4>
+                  {activeProduct.ingredients.map((ing, i) => (
+                    <div key={i} style={{ padding: '10px 0', borderBottom: '1px solid #f1f5f9', fontSize: '0.9rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span>{ing.name}</span>
+                        <span style={{ color: ing.risk === 'High' ? '#ef4444' : '#94a3b8' }}>{ing.risk} Risk</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div>
+                  <h4>Local Compliance Wiki</h4>
+                  <NoteBox 
+                    placeholder="Enter vendor observations or customer feedback..."
+                    value={store.vendorNotes[activeProduct.id] || ''}
+                    onChange={(e) => store.saveNote(activeProduct.id, e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {alternatives.length > 0 && (
+                <div style={{ marginTop: '3rem', padding: '2rem', background: '#f0f9ff', borderRadius: '16px' }}>
+                  <h4 style={{ margin: 0, color: '#0369a1' }}>💡 Smart Switch Suggestion</h4>
+                  <p style={{ color: '#0c4a6e', fontSize: '0.9rem' }}>The current item doesn't meet the {store.standard} standard. Recommend these instead:</p>
+                  <SuggestionGrid>
+                    {alternatives.map(([id, p]) => (
+                      <div key={id} style={{ background: 'white', padding: '1rem', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
+                        <strong>{p.img} {p.name}</strong>
+                        <div style={{ fontSize: '0.75rem', color: '#64748b' }}>SKU: {id}</div>
+                      </div>
+                    ))}
+                  </SuggestionGrid>
                 </div>
               )}
-            </ProductHero>
+            </ProductCard>
+          ) : (
+            <div style={{ textAlign: 'center', marginTop: '15vh', color: '#cbd5e1' }}>
+              <div style={{ fontSize: '5rem' }}>🔍</div>
+              <h2>Terminal Standby</h2>
+              <p>Scan a product barcode to initiate compliance audit.</p>
+            </div>
           )}
-        </MainContent>
-      </DashboardLayout>
+        </Main>
+      </Layout>
     </>
   );
 }
