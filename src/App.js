@@ -1,9 +1,9 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, Component } from 'react';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import styled, { createGlobalStyle } from 'styled-components';
 
-// --- 1. GLOBAL STYLES ---
+// --- 1. GLOBAL STYLES & THEME ---
 const GlobalStyle = createGlobalStyle`
   body {
     margin: 0; padding: 0;
@@ -11,225 +11,162 @@ const GlobalStyle = createGlobalStyle`
     background-color: #020617;
     color: #f1f5f9;
   }
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
 `;
 
-// --- 2. ZUSTAND STORE WITH PERSISTENCE ---
-// This ensures that the vendor's shift data and disposal list survive a page refresh.
+// --- 2. SENIOR STATE MANAGEMENT (Zustand + Persistence) ---
 const useVendorStore = create(
   persist(
     (set) => ({
       vendorName: '',
-      language: 'en',
-      madhhab: 'General', // Jurisdiction Logic
-      scannedProduct: null,
+      view: 'terminal', // 'terminal' or 'analytics'
+      madhhab: 'General',
       history: [],
       disposalList: [],
-      isSyncing: false,
-
+      
       setVendor: (name) => set({ vendorName: name }),
-      setLanguage: (lang) => set({ language: lang }),
+      setView: (v) => set({ view: v }),
       setMadhhab: (m) => set({ madhhab: m }),
       
-      setProduct: (product) => set((state) => ({
-        scannedProduct: { ...product, hasPhysicalStamp: false },
-        history: [{ ...product, scanTime: new Date().toLocaleTimeString() }, ...state.history].slice(0, 5)
+      recordScan: (product, status) => set((state) => ({
+        history: [{ ...product, status, time: new Date().toISOString() }, ...state.history]
       })),
-
-      toggleStamp: (value) => set((state) => ({
-        scannedProduct: { ...state.scannedProduct, hasPhysicalStamp: value }
-      })),
-
+      
       addToDisposal: (product) => set((state) => ({
-        disposalList: [...state.disposalList, { ...product, id: Date.now() }],
-        scannedProduct: null
+        disposalList: [...state.disposalList, { ...product, id: Date.now() }]
       })),
-
-      setSyncing: (status) => set({ isSyncing: status }),
-      clearAll: () => set({ scannedProduct: null, history: [], disposalList: [] }),
+      
+      logout: () => set({ vendorName: '', view: 'terminal' }),
     }),
-    { name: 'vendor-station-storage' }
+    { name: 'enterprise-vendor-storage' }
   )
 );
 
-// --- 3. DATABASE WITH JURISDICTIONAL DATA ---
-const FOOD_DATABASE = {
-  "333": {
-    name: "Canned Seafood Mix",
-    brand: "OceanPrime",
-    ingredients: [
-      { id: 1, en: "Shrimp", ar: "جمبري", status: "halal", madhhab_exception: { "Hanafi": "mushbooh" } },
-      { id: 2, en: "Shellac Glaze", ar: "ملمع شيلاك", status: "halal", madhhab_exception: { "General": "mushbooh" } }
-    ]
+// --- 3. MOCK DATABASE ---
+const FOOD_DATABASE = [
+  { barcode: "111", name: "Gummy Bears", brand: "SugarCo", ingredients: [{ en: "Pork Gelatin", status: "haram" }, { en: "Sugar", status: "halal" }] },
+  { barcode: "222", name: "Beef Stew", brand: "HalalFoods", ingredients: [{ en: "Beef", status: "halal" }, { en: "Water", status: "halal" }] },
+  { barcode: "333", name: "Seaweed Snacks", brand: "Marine", ingredients: [{ en: "Seaweed", status: "halal" }, { en: "Carmine", status: "haram" }] },
+];
+
+// --- 4. ERROR BOUNDARY (Senior Resilience Pattern) ---
+class ErrorBoundary extends Component {
+  state = { hasError: false };
+  static getDerivedStateFromError() { return { hasError: true }; }
+  render() {
+    if (this.state.hasError) return <div style={{padding: '20px', color: 'red'}}>Critical System Failure. Please Refresh.</div>;
+    return this.props.children;
   }
+}
+
+// --- 5. STYLED COMPONENTS ---
+const Container = styled.div` display: grid; grid-template-columns: 260px 1fr; height: 100vh; `;
+const Sidebar = styled.nav` background: #0f172a; padding: 20px; border-right: 1px solid #1e293b; display: flex; flex-direction: column; `;
+const Main = styled.main` padding: 30px; overflow-y: auto; background: #020617; `;
+const StatCard = styled.div` background: #1e293b; padding: 20px; border-radius: 10px; border-left: 4px solid ${props => props.color}; `;
+const SearchInput = styled.input` width: 100%; padding: 15px; background: #1e293b; border: 1px solid #334155; color: white; border-radius: 8px; margin-bottom: 20px; `;
+
+// --- 6. ANALYTICS COMPONENT ---
+const AnalyticsView = ({ history }) => {
+  const stats = useMemo(() => {
+    const total = history.length;
+    const haram = history.filter(h => h.status === 'HARAM').length;
+    const halal = total - haram;
+    return { total, haram, halal, rate: total ? ((haram / total) * 100).toFixed(1) : 0 };
+  }, [history]);
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
+      <StatCard color="#3b82f6"><h3>Total Scans</h3><h1>{stats.total}</h1></StatCard>
+      <StatCard color="#ef4444"><h3>Haram Flagged</h3><h1>{stats.haram}</h1></StatCard>
+      <StatCard color="#22c55e"><h3>Halal Approved</h3><h1>{stats.halal}</h1></StatCard>
+      <StatCard color="#f59e0b"><h3>Rejection Rate</h3><h1>{stats.rate}%</h1></StatCard>
+    </div>
+  );
 };
 
-// --- 4. STYLED COMPONENTS ---
-const Layout = styled.div`
-  display: grid;
-  grid-template-columns: 280px 1fr 300px;
-  gap: 15px;
-  padding: 15px;
-  height: 100vh;
-  box-sizing: border-box;
-`;
+// --- 7. TERMINAL COMPONENT (with Fuzzy Search) ---
+const TerminalView = () => {
+  const [query, setQuery] = useState('');
+  const { recordScan, addToDisposal } = useVendorStore();
 
-const Card = styled.div`
-  background: #1e293b;
-  border-radius: 10px;
-  padding: 20px;
-  border: 1px solid #334155;
-  display: flex;
-  flex-direction: column;
-`;
+  // Simple Fuzzy Search implementation
+  const filteredProducts = useMemo(() => {
+    if (!query) return [];
+    return FOOD_DATABASE.filter(p => 
+      p.barcode.includes(query) || p.name.toLowerCase().includes(query.toLowerCase())
+    );
+  }, [query]);
 
-const SyncOverlay = styled.div`
-  position: absolute;
-  top: 10px; right: 10px;
-  background: #0ea5e9;
-  padding: 5px 10px;
-  border-radius: 20px;
-  font-size: 0.7rem;
-  animation: pulse 1.5s infinite;
-  @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
-`;
-
-// --- 5. MAIN APPLICATION ---
-export default function App() {
-  const [barcode, setBarcode] = useState('');
-  const store = useVendorStore();
-
-  // MOCK ASYNC SYNC: Simulates pushing to an inventory system
-  const handleSync = async () => {
-    store.setSyncing(true);
-    await new Promise(res => setTimeout(res, 2000)); // Simulate delay
-    alert("Central Inventory Updated Successfully");
-    store.setSyncing(false);
+  const handleAction = (product) => {
+    const isHaram = product.ingredients.some(i => i.status === 'haram');
+    const status = isHaram ? 'HARAM' : 'HALAL';
+    recordScan(product, status);
+    if (isHaram) addToDisposal(product);
+    setQuery('');
+    alert(`Logged as ${status}`);
   };
 
-  // ADVANCED LOGIC: Madhhab-specific filtering
-  const finalStatus = useMemo(() => {
-    if (!store.scannedProduct) return null;
-    
-    let haramCount = 0;
-    let mushboohCount = 0;
+  return (
+    <div>
+      <SearchInput placeholder="Search by Barcode or Name (Try '111' or 'Beef')..." value={query} onChange={e => setQuery(e.target.value)} />
+      {filteredProducts.map(p => (
+        <div key={p.barcode} style={{ background: '#1e293b', padding: '15px', borderRadius: '8px', marginBottom: '10px', display: 'flex', justifyContent: 'space-between' }}>
+          <div><strong>{p.name}</strong> <small>{p.brand}</small></div>
+          <button onClick={() => handleAction(p)} style={{ background: '#3b82f6', color: 'white', border: 'none', padding: '5px 15px', borderRadius: '4px', cursor: 'pointer' }}>Verify</button>
+        </div>
+      ))}
+    </div>
+  );
+};
 
-    store.scannedProduct.ingredients.forEach(ing => {
-      // Check if this specific Madhhab has a different ruling
-      const effectiveStatus = ing.madhhab_exception?.[store.madhhab] || ing.status;
-      if (effectiveStatus === 'haram') haramCount++;
-      if (effectiveStatus === 'mushbooh') mushboohCount++;
-    });
-
-    if (haramCount > 0) return 'HARAM';
-    if (mushboohCount > 0 && !store.scannedProduct.hasPhysicalStamp) return 'MUSHBOOH';
-    return 'HALAL';
-  }, [store.scannedProduct, store.madhhab]);
+// --- 8. MAIN APP ---
+export default function App() {
+  const store = useVendorStore();
 
   if (!store.vendorName) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-        <Card style={{ width: '300px', textAlign: 'center' }}>
-          <h3>Shift Login</h3>
-          <input 
-            placeholder="Vendor Name" 
-            onKeyDown={(e) => e.key === 'Enter' && store.setVendor(e.target.value)}
-            style={{ padding: '10px', marginBottom: '10px' }}
-          />
-          <small>Press Enter to start shift</small>
-        </Card>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: '#020617' }}>
+        <div style={{ background: '#1e293b', padding: '40px', borderRadius: '12px', textAlign: 'center' }}>
+          <h2>Compliance Login</h2>
+          <input placeholder="Enter Employee Name" onKeyDown={e => e.key === 'Enter' && store.setVendor(e.target.value)} style={{ padding: '10px', borderRadius: '4px', border: 'none' }} />
+        </div>
       </div>
     );
   }
 
   return (
-    <>
+    <ErrorBoundary>
       <GlobalStyle />
-      {store.isSyncing && <SyncOverlay>SYNCING WITH HUB...</SyncOverlay>}
-      
-      <Layout>
-        {/* Left Panel: Settings & Shift Info */}
-        <Card>
-          <h3>👤 {store.vendorName}</h3>
-          <hr style={{ width: '100%', borderColor: '#334155' }} />
-          
-          <label><small>Jurisdiction (Madhhab)</small></label>
-          <select value={store.madhhab} onChange={(e) => store.setMadhhab(e.target.value)} style={{ marginBottom: '15px' }}>
-            <option value="General">General / Shafi'i</option>
-            <option value="Hanafi">Hanafi</option>
-            <option value="Maliki">Maliki</option>
-          </select>
+      <Container>
+        <Sidebar>
+          <h3>Workstation</h3>
+          <p style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Vendor: {store.vendorName}</p>
+          <hr style={{ width: '100%', borderColor: '#1e293b', margin: '20px 0' }} />
+          <button onClick={() => store.setView('terminal')} style={{ padding: '10px', marginBottom: '10px', background: store.view === 'terminal' ? '#3b82f6' : 'transparent', border: 'none', color: 'white', textAlign: 'left', cursor: 'pointer', borderRadius: '4px' }}>🔍 Scan Terminal</button>
+          <button onClick={() => store.setView('analytics')} style={{ padding: '10px', marginBottom: '10px', background: store.view === 'analytics' ? '#3b82f6' : 'transparent', border: 'none', color: 'white', textAlign: 'left', cursor: 'pointer', borderRadius: '4px' }}>📊 Market Analytics</button>
+          <div style={{ marginTop: 'auto' }}>
+            <button onClick={store.logout} style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }}>End Shift</button>
+          </div>
+        </Sidebar>
 
-          <label><small>Interface Language</small></label>
-          <select value={store.language} onChange={(e) => store.setLanguage(e.target.value)}>
-            <option value="en">English</option>
-            <option value="ar">العربية</option>
-          </select>
+        <Main>
+          <header style={{ marginBottom: '30px', display: 'flex', justifyContent: 'space-between' }}>
+            <h2>{store.view === 'terminal' ? 'Product Verification' : 'Compliance Insights'}</h2>
+            <div style={{ background: '#1e293b', padding: '5px 15px', borderRadius: '20px', fontSize: '0.8rem' }}>System: Online (Local Storage Active)</div>
+          </header>
 
-          <button onClick={() => store.setVendor('')} style={{ marginTop: 'auto', background: 'transparent', color: '#94a3b8', border: '1px solid #334155', cursor: 'pointer' }}>
-            End Shift
-          </button>
-        </Card>
+          {store.view === 'terminal' ? <TerminalView /> : <AnalyticsView history={store.history} />}
 
-        {/* Center: Main Scan Area */}
-        <Card style={{ background: '#0f172a' }}>
-          <form onSubmit={(e) => { e.preventDefault(); if(FOOD_DATABASE[barcode]) store.setProduct(FOOD_DATABASE[barcode]); setBarcode(''); }}>
-            <input 
-              value={barcode} 
-              onChange={(e) => setBarcode(e.target.value)}
-              placeholder="Scan Barcode (333)..."
-              style={{ width: '100%', padding: '15px', boxSizing: 'border-box', background: '#1e293b', color: 'white', border: 'none', borderRadius: '5px' }}
-            />
-          </form>
-
-          {store.scannedProduct && (
-            <div style={{ marginTop: '20px' }}>
-              <div style={{ padding: '15px', borderRadius: '5px', textAlign: 'center', fontWeight: 'bold', background: finalStatus === 'HARAM' ? '#ef4444' : '#22c55e' }}>
-                {finalStatus} {store.scannedProduct.hasPhysicalStamp && "✓"}
-              </div>
-              
-              <div style={{ marginTop: '15px' }}>
-                <input type="checkbox" checked={store.scannedProduct.hasPhysicalStamp} onChange={(e) => store.toggleStamp(e.target.checked)} />
-                <label style={{ marginLeft: '10px' }}>Physical Halal Stamp Present</label>
-              </div>
-
-              {store.scannedProduct.ingredients.map(ing => (
-                <div key={ing.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid #334155' }}>
-                  <span>{ing[store.language]}</span>
-                  <span style={{ color: (ing.madhhab_exception?.[store.madhhab] || ing.status) === 'haram' ? '#ef4444' : '#94a3b8' }}>
-                    {(ing.madhhab_exception?.[store.madhhab] || ing.status).toUpperCase()}
-                  </span>
-                </div>
-              ))}
-
-              <button 
-                onClick={() => store.addToDisposal(store.scannedProduct)}
-                style={{ width: '100%', marginTop: '20px', padding: '10px', background: '#ef4444', color: 'white', border: 'none', cursor: 'pointer' }}
-              >
-                FLAG FOR DISPOSAL
-              </button>
+          {store.disposalList.length > 0 && store.view === 'terminal' && (
+            <div style={{ marginTop: '40px', padding: '20px', background: '#450a0a', borderRadius: '8px', border: '1px solid #ef4444' }}>
+              <h4>⚠️ Active Disposal List</h4>
+              {store.disposalList.map((d, i) => <div key={i} style={{ fontSize: '0.85rem' }}>• {d.name} ({d.brand})</div>)}
             </div>
           )}
-        </Card>
-
-        {/* Right: History & Sync */}
-        <Card>
-          <h4>📦 Disposal Queue</h4>
-          <div style={{ flex: 1 }}>
-            {store.disposalList.map(item => (
-              <div key={item.id} style={{ fontSize: '0.8rem', padding: '5px', background: '#450a0a', marginBottom: '5px' }}>
-                {item.name}
-              </div>
-            ))}
-          </div>
-          <button 
-            disabled={store.disposalList.length === 0 || store.isSyncing}
-            onClick={handleSync}
-            style={{ padding: '10px', background: '#0ea5e9', color: 'white', border: 'none', cursor: 'pointer' }}
-          >
-            {store.isSyncing ? "SYNCING..." : "COMMIT TO INVENTORY"}
-          </button>
-        </Card>
-      </Layout>
-    </>
+        </Main>
+      </Container>
+    </ErrorBoundary>
   );
 }
