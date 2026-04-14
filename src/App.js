@@ -1,127 +1,139 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo } from 'react';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import styled, { createGlobalStyle, keyframes } from 'styled-components';
 
 // --- 1. GLOBAL STYLES ---
 const GlobalStyle = createGlobalStyle`
-  body { margin: 0; padding: 0; font-family: 'Inter', sans-serif; background-color: #f1f5f9; color: #0f172a; }
+  body { margin: 0; padding: 0; font-family: 'Inter', sans-serif; background-color: #f8fafc; color: #0f172a; }
   * { box-sizing: border-box; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
 `;
 
-const pulse = keyframes`
-  0% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.05); opacity: 0.8; }
-  100% { transform: scale(1); opacity: 1; }
+const fadeIn = keyframes`
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
 `;
 
-// --- 2. THE PRINCIPAL STORE (Security & Buffer) ---
+// --- 2. THE PRINCIPAL STORE ---
 const useStore = create(
   persist(
     (set) => ({
-      auth: { scannerId: 'STAFF_01', managerId: null },
-      activeStandard: 'HMC', // HMC vs JAKIM vs GIMDES
-      batchBuffer: [],
+      activeStandard: 'HMC',
       history: [],
-      
-      setManager: (id) => set((state) => ({ auth: { ...state.auth, managerId: id } })),
+      auth: { managerId: null },
       setStandard: (s) => set({ activeStandard: s }),
-      
-      addToBuffer: (barcode) => set((state) => ({ 
-        batchBuffer: [...state.batchBuffer, { barcode, id: Date.now(), status: 'pending' }] 
+      setManager: (id) => set((state) => ({ auth: { ...state.auth, managerId: id } })),
+      logAudit: (product) => set((state) => ({
+        history: [{ ...product, auditId: Date.now() }, ...state.history].slice(0, 10)
       })),
-      
-      processBuffer: (results) => set((state) => ({
-        history: [...results, ...state.history].slice(0, 50),
-        batchBuffer: []
-      })),
-
-      clearSession: () => set({ history: [], batchBuffer: [], auth: { scannerId: 'STAFF_01', managerId: null } })
+      reset: () => set({ history: [], auth: { managerId: null } })
     }),
-    { name: 'principal-compliance-v7' }
+    { name: 'catalog-auditor-v8' }
   )
 );
 
-// --- 3. MULTI-REGULATORY DATA MATRIX ---
-const PRODUCT_MATRIX = {
-  "999": {
-    name: "Artisan Sea Salt Mix",
-    category: "Pantry",
+// --- 3. THE PRODUCT REPOSITORY (The Source of Truth) ---
+const PRODUCT_REPOSITORY = [
+  {
+    id: "999", name: "Artisan Sea Salt Mix", brand: "OceanGourmet", category: "Pantry", img: "🧂",
     regulations: {
-      HMC: { status: 'halal', risk: 'Low', note: 'Standard mineral check.' },
-      JAKIM: { status: 'mushbooh', risk: 'Medium', note: 'Trace minerals require facility audit.' },
-      GIMDES: { status: 'halal', risk: 'Low', note: 'Verified origin.' }
+      HMC: { status: 'halal', note: 'Natural mineral source.' },
+      JAKIM: { status: 'mushbooh', note: 'Facility audit pending.' },
+      GIMDES: { status: 'halal', note: 'Certified origin.' }
     }
   },
-  "888": {
-    name: "Enriched Flour",
-    category: "Bakery",
+  {
+    id: "888", name: "Enriched Baker's Flour", brand: "GrainMaster", category: "Bakery", img: "🍞",
     regulations: {
-      HMC: { status: 'halal', risk: 'Low', note: 'Synthetic vitamins approved.' },
-      JAKIM: { status: 'halal', risk: 'Low', note: 'Standard fortification.' },
-      GIMDES: { status: 'haram', risk: 'High', note: 'E924 additive used in milling.' }
+      HMC: { status: 'halal', note: 'Standard fortification.' },
+      JAKIM: { status: 'halal', note: 'JAKIM-approved vitamins.' },
+      GIMDES: { status: 'haram', note: 'E924 additive detected.' }
+    }
+  },
+  {
+    id: "777", name: "Premium Beef Broth", brand: "StockHouse", category: "Pantry", img: "🥣",
+    regulations: {
+      HMC: { status: 'halal', note: 'Hand-slaughtered source.' },
+      JAKIM: { status: 'halal', note: 'Standard Halal process.' },
+      GIMDES: { status: 'mushbooh', note: 'Enzymatic analysis required.' }
+    }
+  },
+  {
+    id: "666", name: "Wildflower Honey", brand: "BeePure", category: "Sweets", img: "🍯",
+    regulations: {
+      HMC: { status: 'halal', note: 'Pure honey.' },
+      JAKIM: { status: 'halal', note: 'Natural product.' },
+      GIMDES: { status: 'halal', note: 'No additives.' }
     }
   }
-};
+];
 
 // --- 4. STYLED COMPONENTS ---
-const AppGrid = styled.div` display: grid; grid-template-columns: 280px 1fr; height: 100vh; `;
-const Sidebar = styled.nav` background: #0f172a; color: white; padding: 2rem; display: flex; flex-direction: column; gap: 2rem; `;
-const Workspace = styled.main` padding: 2rem; overflow-y: auto; `;
-const Card = styled.div` background: white; border-radius: 12px; padding: 1.5rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin-bottom: 1.5rem; `;
+const Layout = styled.div` display: grid; grid-template-columns: 280px 1fr; height: 100vh; `;
+const Sidebar = styled.aside` background: #0f172a; color: white; padding: 2rem; display: flex; flex-direction: column; gap: 2rem; `;
+const Viewport = styled.main` padding: 2.5rem; overflow-y: auto; display: grid; grid-template-columns: 1fr 380px; gap: 2.5rem; `;
 
-const StatusTag = styled.span`
-  padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: bold;
+const ProductGrid = styled.div`
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1.5rem;
+`;
+
+const SelectableCard = styled.div`
+  background: white; border-radius: 16px; padding: 1.5rem; cursor: pointer;
+  border: 2px solid ${props => props.active ? '#3b82f6' : 'transparent'};
+  box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+  &:hover { transform: translateY(-4px); box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
+`;
+
+const AuditPanel = styled.div`
+  background: white; border-radius: 20px; padding: 2rem; position: sticky; top: 0;
+  box-shadow: 0 20px 25px -5px rgba(0,0,0,0.05); animation: ${fadeIn} 0.3s ease;
+  height: fit-content; border: 1px solid #e2e8f0;
+`;
+
+const StatusBadge = styled.span`
+  padding: 6px 12px; border-radius: 8px; font-size: 0.7rem; font-weight: 800; text-transform: uppercase;
   background: ${props => props.type === 'halal' ? '#dcfce7' : props.type === 'mushbooh' ? '#fef3c7' : '#fecaca'};
   color: ${props => props.type === 'halal' ? '#166534' : props.type === '92400e' ? '#92400e' : '#991b1b'};
 `;
 
-const BatchItem = styled.div`
-  display: flex; justify-content: space-between; padding: 10px; background: #f8fafc;
-  border-radius: 6px; margin-bottom: 8px; border: 1px solid #e2e8f0;
-  animation: ${pulse} 2s infinite;
-`;
-
 // --- 5. MAIN APPLICATION ---
 export default function App() {
-  const [input, setInput] = useState('');
   const store = useStore();
+  const [selectedProduct, setSelectedProduct] = useState(null);
 
-  // STAFF LOGIC: Async Batch Processor
-  const processBatch = () => {
-    const results = store.batchBuffer.map(item => {
-      const data = PRODUCT_MATRIX[item.barcode];
-      if (!data) return null;
-      return { 
-        ...data, 
-        resolvedStatus: data.regulations[store.activeStandard].status,
-        timestamp: new Date().toLocaleTimeString()
-      };
-    }).filter(Boolean);
-    
-    store.processBuffer(results);
+  const handleAudit = (product) => {
+    setSelectedProduct(product);
+    store.logAudit(product);
   };
+
+  const currentVerdict = useMemo(() => {
+    if (!selectedProduct) return null;
+    return selectedProduct.regulations[store.activeStandard];
+  }, [selectedProduct, store.activeStandard]);
 
   return (
     <>
       <GlobalStyle />
-      <AppGrid>
+      <Layout>
         <Sidebar>
           <div>
-            <h3 style={{ color: '#3b82f6', marginBottom: '0.5rem' }}>Global Auditor</h3>
-            <small style={{ color: '#94a3b8' }}>Session: {store.auth.scannerId}</small>
+            <h2 style={{ color: '#3b82f6', marginBottom: '0.2rem' }}>Catalog-Intel</h2>
+            <small style={{ color: '#64748b' }}>Enterprise Auditor v8.0</small>
           </div>
 
           <div>
-            <label style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 800 }}>REGULATORY BODY</label>
-            <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+            <label style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 800 }}>AUDIT STANDARD</label>
+            <div style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {['HMC', 'JAKIM', 'GIMDES'].map(reg => (
                 <button 
                   key={reg} 
                   onClick={() => store.setStandard(reg)}
                   style={{ 
-                    padding: '8px', textAlign: 'left', borderRadius: '6px', border: 'none',
-                    background: store.activeStandard === reg ? '#3b82f6' : '#1e293b', color: 'white', cursor: 'pointer'
+                    padding: '12px', textAlign: 'left', borderRadius: '10px', border: 'none',
+                    background: store.activeStandard === reg ? '#3b82f6' : '#1e293b', 
+                    color: 'white', cursor: 'pointer', fontWeight: 600
                   }}
                 >
                   {reg} {store.activeStandard === reg && '✓'}
@@ -131,89 +143,94 @@ export default function App() {
           </div>
 
           <div style={{ marginTop: 'auto' }}>
-            <button onClick={store.clearSession} style={{ background: 'none', border: '1px solid #334155', color: '#94a3b8', width: '100%', padding: '10px', cursor: 'pointer' }}>
-              Terminal Reset
-            </button>
+            <small style={{ color: '#64748b' }}>Audit Log: {store.history.length} items</small>
+            <button onClick={store.reset} style={{ width: '100%', marginTop: '10px', background: 'none', border: '1px solid #334155', color: '#94a3b8', padding: '10px', cursor: 'pointer', borderRadius: '8px' }}>Reset Logs</button>
           </div>
         </Sidebar>
 
-        <Workspace>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 350px', gap: '20px' }}>
-            <section>
-              <Card>
-                <h3>Rapid Intake Buffer</h3>
-                <form onSubmit={(e) => { e.preventDefault(); store.addToBuffer(input); setInput(''); }}>
-                  <input 
-                    placeholder="Fast Scan (Try 888 or 999)..."
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    style={{ width: '100%', padding: '15px', borderRadius: '8px', border: '2px solid #e2e8f0', fontSize: '1rem' }}
-                  />
-                </form>
-                
-                {store.batchBuffer.length > 0 && (
-                  <div style={{ marginTop: '20px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
-                      <small>{store.batchBuffer.length} items in queue</small>
-                      <button onClick={processBatch} style={{ background: '#22c55e', color: 'white', border: 'none', padding: '5px 15px', borderRadius: '4px', cursor: 'pointer' }}>Commit Batch</button>
-                    </div>
-                    {store.batchBuffer.map(item => (
-                      <BatchItem key={item.id}>
-                        <span>SKU: {item.barcode}</span>
-                        <small>WAITING...</small>
-                      </BatchItem>
-                    ))}
-                  </div>
-                )}
-              </Card>
+        <Viewport>
+          <section>
+            <header style={{ marginBottom: '2rem' }}>
+              <h1 style={{ margin: 0 }}>Available Inventory</h1>
+              <p style={{ color: '#64748b' }}>Select a product from the warehouse floor to perform a regulatory audit.</p>
+            </header>
+            
+            <ProductGrid>
+              {PRODUCT_REPOSITORY.map(product => (
+                <SelectableCard 
+                  key={product.id} 
+                  active={selectedProduct?.id === product.id}
+                  onClick={() => handleAudit(product)}
+                >
+                  <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>{product.img}</div>
+                  <h4 style={{ margin: '0 0 5px 0' }}>{product.name}</h4>
+                  <small style={{ color: '#64748b' }}>{product.brand}</small>
+                </SelectableCard>
+              ))}
+            </ProductGrid>
+          </section>
 
-              <Card>
-                <h3>Compliance History ({store.activeStandard})</h3>
-                {store.history.map((h, i) => (
-                  <div key={i} style={{ padding: '12px 0', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between' }}>
-                    <div>
-                      <strong>{h.name}</strong> <br />
-                      <small style={{ color: '#64748b' }}>{h.regulations[store.activeStandard].note}</small>
-                    </div>
-                    <StatusTag type={h.resolvedStatus}>{h.resolvedStatus.toUpperCase()}</StatusTag>
-                  </div>
-                ))}
-              </Card>
-            </section>
+          <aside>
+            {selectedProduct ? (
+              <AuditPanel>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
+                  <StatusBadge type={currentVerdict.status}>
+                    {currentVerdict.status}
+                  </StatusBadge>
+                  <small style={{ color: '#94a3b8' }}>ID: {selectedProduct.id}</small>
+                </div>
 
-            <section>
-              <Card style={{ borderLeft: '4px solid #f59e0b' }}>
-                <h4>Security Protocol</h4>
-                <p style={{ fontSize: '0.8rem', color: '#64748b' }}>Dual-signature required for <strong>GIMDES</strong> flagged removals.</p>
-                {!store.auth.managerId ? (
-                  <button 
-                    onClick={() => store.setManager('MGMT_ALPHA')}
-                    style={{ width: '100%', padding: '10px', background: '#f59e0b', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}
-                  >
-                    Request Manager Sign-off
-                  </button>
-                ) : (
-                  <div style={{ background: '#dcfce7', padding: '10px', borderRadius: '6px', fontSize: '0.8rem', color: '#166534' }}>
-                    Authorized by: {store.auth.managerId}
-                  </div>
-                )}
-              </Card>
+                <h2 style={{ margin: '0 0 0.5rem 0' }}>{selectedProduct.img} {selectedProduct.name}</h2>
+                <p style={{ color: '#64748b', fontSize: '0.9rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '1.5rem' }}>
+                  Compliance report generated under <strong>{store.activeStandard}</strong> jurisdiction.
+                </p>
 
-              <Card>
-                <h4>Regulatory Matrix Comparison</h4>
-                <div style={{ fontSize: '0.75rem' }}>
-                  {store.history[0] && Object.entries(store.history[0].regulations).map(([reg, data]) => (
-                    <div key={reg} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0' }}>
-                      <span>{reg}</span>
-                      <StatusTag type={data.status}>{data.status}</StatusTag>
+                <div style={{ marginTop: '1.5rem' }}>
+                  <h4>Regulatory Verdict</h4>
+                  <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: '12px', fontSize: '0.85rem', color: '#475569' }}>
+                    "{currentVerdict.note}"
+                  </div>
+                </div>
+
+                <div style={{ marginTop: '2rem' }}>
+                  <h4>Cross-Body Comparison</h4>
+                  {Object.entries(selectedProduct.regulations).map(([reg, data]) => (
+                    <div key={reg} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid #f8fafc' }}>
+                      <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>{reg}</span>
+                      <StatusBadge type={data.status}>{data.status}</StatusBadge>
                     </div>
                   ))}
                 </div>
-              </Card>
-            </section>
-          </div>
-        </Workspace>
-      </AppGrid>
+
+                <div style={{ marginTop: '2rem', padding: '1.5rem', background: '#fffbeb', borderRadius: '12px', border: '1px solid #fef3c7' }}>
+                  <h4 style={{ margin: '0 0 10px 0', color: '#92400e' }}>🛡️ Security Protocol</h4>
+                  <p style={{ fontSize: '0.75rem', color: '#b45309', marginBottom: '1rem' }}>
+                    Disposal of non-compliant items requires a Manager's electronic signature.
+                  </p>
+                  {!store.auth.managerId ? (
+                    <button 
+                      onClick={() => store.setManager('MGMT_OVERSIGHT_01')}
+                      style={{ width: '100%', padding: '10px', background: '#d97706', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}
+                    >
+                      Authorize Manager Sign-off
+                    </button>
+                  ) : (
+                    <div style={{ color: '#166534', fontWeight: 'bold', fontSize: '0.8rem' }}>
+                      ✓ Signed by {store.auth.managerId}
+                    </div>
+                  )}
+                </div>
+              </AuditPanel>
+            ) : (
+              <div style={{ textAlign: 'center', marginTop: '10rem', color: '#cbd5e1' }}>
+                <div style={{ fontSize: '4rem' }}>👈</div>
+                <h3>Awaiting Selection</h3>
+                <p>Select an item to view the compliance matrix.</p>
+              </div>
+            )}
+          </aside>
+        </Viewport>
+      </Layout>
     </>
   );
 }
